@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<!-- 移动端适配：禁止缩放视口让页面按设备宽度渲染 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>瞬影簿 · 轻量科普图卡</title>
+<style>
+  /* ===================== 主题变量 ===================== */
+  :root{
+    --bg:#f7f7f8;          /* 页面背景 */
+    --card-bg:#ffffff;     /* 卡片背景 */
+    --text:#222222;        /* 主文字 */
+    --muted:#888888;       /* 次要文字 */
+    --accent:#ff2e4d;      /* 强调色（小红书风格红） */
+    --radius:12px;         /* 圆角 */
+    --gap:14px;            /* 卡片间距 */
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.5;
+  }
+
+  /* ===================== 顶部栏 ===================== */
+  header{
+    position:sticky;top:0;z-index:10;            /* 吸顶，滚动时常驻 */
+    background:rgba(255,255,255,.9);
+    backdrop-filter:saturate(180%) blur(8px);     /* 轻量毛玻璃 */
+    border-bottom:1px solid #eee;
+    padding:12px 16px;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  }
+  header h1{font-size:20px;font-weight:700;letter-spacing:1px;white-space:nowrap;}
+  header h1 span{color:var(--accent);}
+  /* 搜索框 */
+  #search{
+    flex:1;min-width:180px;
+    border:1px solid #ddd;border-radius:999px;
+    padding:9px 16px;font-size:14px;outline:none;
+    transition:border-color .15s;
+  }
+  #search:focus{border-color:var(--accent);}
+
+  /* ===================== 瀑布流布局 ===================== */
+  /* 使用 CSS 多列实现瀑布流：纯 CSS、零 JS 计算、最轻量 */
+  .masonry{
+    column-count:4;column-gap:var(--gap);
+    padding:var(--gap);max-width:1200px;margin:0 auto;
+  }
+  @media(max-width:900px){.masonry{column-count:3;}}  /* 平板 */
+  @media(max-width:600px){.masonry{column-count:2;}}  /* 手机 */
+
+  .card{
+    break-inside:avoid;                 /* 关键：防止卡片被分栏截断 */
+    background:var(--card-bg);
+    border-radius:var(--radius);
+    margin-bottom:var(--gap);
+    overflow:hidden;
+    box-shadow:0 1px 4px rgba(0,0,0,.06);
+    cursor:pointer;
+  }
+  .card img{width:100%;height:auto;display:block;background:#eee;}  /* 保留原图比例，形成错落感 */
+  .card .body{padding:10px 12px;}
+  .card .title{font-size:14px;font-weight:600;}
+  .card .desc{font-size:12px;color:var(--muted);margin-top:4px;}
+  .card .tag{
+    display:inline-block;font-size:11px;color:var(--accent);
+    background:#fff0f2;border-radius:6px;padding:1px 8px;margin-top:8px;
+  }
+  .empty{text-align:center;color:var(--muted);padding:40px;column-span:all;}  /* 无结果提示 */
+
+  /* ===================== 大图预览弹窗 ===================== */
+  .modal{
+    position:fixed;inset:0;z-index:100;
+    background:rgba(0,0,0,.85);
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    padding:24px;
+  }
+  .modal[hidden]{display:none;}          /* 默认隐藏 */
+  .modal img{max-width:92vw;max-height:80vh;border-radius:8px;}
+  .modal .cap{color:#fff;margin-top:12px;font-size:14px;text-align:center;}
+  .modal .close{
+    position:absolute;top:16px;right:20px;
+    color:#fff;font-size:30px;line-height:1;
+    cursor:pointer;user-select:none;
+  }
+</style>
+</head>
+<body>
+  <!-- 顶部：标题 + 搜索框 -->
+  <header>
+    <h1>瞬<span>影</span>簿</h1>
+    <input id="search" type="search" placeholder="搜索卡片标题或标签，如：牛奶、土豆" autocomplete="off">
+  </header>
+
+  <!-- 卡片容器（由 JS 渲染） -->
+  <main id="masonry" class="masonry"></main>
+
+  <!-- 大图预览弹窗 -->
+  <div id="modal" class="modal" hidden>
+    <span class="close" id="modalClose" title="关闭">×</span>
+    <img id="modalImg" src="" alt="">
+    <p class="cap" id="modalCap"></p>
+  </div>
+
+<script>
+/* =========================================================
+   数据区：62 张外部图床图片已接入，标题/描述/标签已按图片内容填写。
+   每条格式：
+     {title:"标题文字", desc:"补充说明", tag:"品类标签（用于搜索）", img:"https://你的图床/图片.jpg"}
+   注意：img 必须是外部图床的 https 直链，不要内嵌 base64。
+   ========================================================= */
+const DATA = [
+  {title:"火锅的一生", desc:"在家吃和去店里吃差在哪？一人小火锅约20元，品牌连锁店人均约150元，贵的不只是食材，还有锅底、服务、环境和门店成本。", tag:"火锅",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLvpqlPbOA4WcmlA3oIyk6q1354XVbQACUSkAAljgqVQLKGxyE4ZJ6z0E.jpg"},
+  {title:"酸奶怎么买更值？", desc:"3元风味酸奶到15元高端品牌杯，差别在于蛋白质含量、配料升级、包装和品牌溢价，别只看包装。", tag:"酸奶",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLxFqlPi_Jiu1ihV7_pEUgOxkVqxAewACbCkAAljgqVT2JV4JIyRluz0E.jpg"},
+  {title:"果切的一生", desc:"同样一盒水果，自己切约8元，外卖果切拼盘约25元。散装整果最省，外卖配送到家成本最高。", tag:"水果",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLxNqlPj2RPAfn-CFi1P5zSL97LGRkAACbikAAljgqVSkAcyIGIYEoz0E.jpg"},
+  {title:"面包的一生", desc:"3元基础吐司到18元网红烘焙，面粉不贵，贵的是黄油、奶酪、馅料、工序和门店品牌溢价。", tag:"面包",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLxdqlPkY8sOGKXTE5YRJrxmTOfZMDgACcikAAljgqVR5PYdv1PaVtz0E.jpg"},
+  {title:"鸡蛋的一生", desc:"水煮蛋约1.5元到蛋挞甜品约18元，食材没变，变贵的是工序、配料和人工成本。", tag:"鸡蛋",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLxlqlPlDyvS2oJZzHYGTHD5XIvesOAACdSkAAljgqVT4p8KwBhJu7T0E.jpg"},
+  {title:"咖啡的一生", desc:"3元速溶到30元精品商圈咖啡，差价来自豆子、奶、人工、房租和品牌体验。", tag:"咖啡",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLxxqlPlxx1BVJ2ImGgwmPt4jteo0_gACeCkAAljgqVSjMPRcGL2ohj0E.jpg"},
+  {title:"早餐的一生", desc:"3元家常水煮蛋到25元咖啡贝果套餐，早餐最贵的往往不是食材，而是方便和时间。", tag:"早餐",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLx9qlPmKkML7cRvoxr3bO3-4gm60tQACeykAAljgqVTsZMIvS01pGj0E.jpg"},
+  {title:"一周带饭成本公开", desc:"5天午饭总成本约32元，同等外卖约90~120元，自己带饭可省60~80元，提前规划更划算。", tag:"带饭",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLyJqlPmvHm-vVn4hAAE-bwcebJYBkwsAAn4pAAJY4KlUrcFLq7ZOEWo9BA.jpg"},
+  {title:"轻食的一生", desc:"12元生菜鸡蛋轻食到32元品牌高配，贵在肉类、配料、包装配送和品牌溢价，不只是菜叶子。", tag:"轻食",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLyRqlPnRJlcnG2aShoi45mQO6rRkhgACgCkAAljgqVR_3hN79ERKVz0E.jpg"},
+  {title:"便当的一生", desc:"4元家常素菜饭到28元品牌便当，自己做8元搞定，外卖贵的是人工、包装、配送和品牌溢价。", tag:"便当",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLyhqlPny1u8i9P6sfGCG7BMo7M9J0wAChCkAAljgqVQ0tSJLN3DUnD0E.jpg"},
+  {title:"白菜的一生", desc:"最便宜的白菜也能越做越复杂，从0.8元水煮到7元猪肉白菜卷，6种吃法热量与成本对比。", tag:"白菜",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLytqlPomkk2DD2FFC-XJlVbTq1g9MAACiCkAAljgqVTnogh7o_ugFT0E.jpg"},
+  {title:"面条的一生", desc:"6种家常面条吃法，清汤面2-3元最省钱，油泼面热量最高，汤底和浇头决定成本。", tag:"面条",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLy9qlPpJ8YnB-ZV0x6Py9iDEwLhCogACkCkAAljgqVSsnBXFMr93GD0E.jpg"},
+  {title:"米饭的一生", desc:"6种米饭吃法成本与热量对比，白米饭0.6元最省，炸饭团热量最高，剩饭也能越做越贵。", tag:"米饭",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLzhqlPqE9HT5G-1G-FKGH3VpGAE7bwACmikAAljgqVRcopHPW7yTxj0E.jpg"},
+  {title:"一条鱼的一生", desc:"6种做法热量与成本对比，鱼片汤最省，炸鱼块热量最高，清蒸最能保留原味。", tag:"鱼",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaLzlqlPqz_7rjuhr_j7yX1Hw11rUfwAACmykAAljgqVSbIQ2myGYh5z0E.jpg"},
+  {title:"鸡胸肉的一生", desc:"从减脂餐水煮鸡胸到炸鸡排，6种做法成本与热量对比，炸鸡排面包糠加油炸最不省。", tag:"鸡胸肉",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL0BqlPrdVNgs_Ac4eOq-wAEsITkf6AACoikAAljgqVRaDc85BrU2UT0E.jpg"},
+  {title:"豆腐的一生", desc:"几块钱豆腐也能做出完全不同的成本，凉拌最省钱，炸豆腐吸油最多、热量最高。", tag:"豆腐",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL0NqlPsDr42hEBs3yIyc9Ywe9OCmMwACpSkAAljgqVR2pOT_OBthbT0E.jpg"},
+  {title:"鸡蛋的一生（家常做法版）", desc:"6种家常鸡蛋做法，配料越加越多，热量和成本差几倍，水煮蛋最省、炸蛋最费油。", tag:"鸡蛋",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL0lqlPsnE0Dl6VJViUwCuy6-699vGQACrCkAAljgqVQi1__7h8XHqz0E.jpg"},
+  {title:"土豆的一生", desc:"6种土豆吃法，热量和花费差好几倍，蒸土豆最朴素，炸薯条最吸油。", tag:"土豆",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL0tqlPtE0UeqdFxnsaMYpfI4n7O3zgACrykAAljgqVT8EtFbhAqGoD0E.jpg"},
+  {title:"茄子的一生", desc:"6种茄子吃法，蒸茄子1-2元最省，炸茄盒6-9元热量最高，吸油做法拉高成本。", tag:"茄子",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL01qlPtd5EVE-mXbtsdG33bv75qQRQACsikAAljgqVRkZ4Ptre3i3j0E.jpg"},
+  {title:"中国火锅蘸料地图", desc:"同一锅火锅，各地蘸出不同灵魂：川渝油碟、北京麻酱、潮汕沙茶、云南蘸水等风味版图。", tag:"火锅",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL2FqlPyixsUjgY3S3ZX3oTMX1ANywAACySkAAljgqVQKqrvjes73WD0E.jpg"},
+  {title:"中国街头小吃地图", desc:"各地从小吃到大的平价快乐：肉夹馍、凉皮、烤包子、臭豆腐、生煎等街头小吃版图。", tag:"小吃",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaNXxqlT1X9iWeKrbKKPUhV07uW-K0wwACpTAAAljgqVRmfWMq5lemvz0E.jpg"},
+  {title:"中国粥饭省钱地图", desc:"一碗米也能吃出全国不同性格，从新疆抓饭、羊肉泡馍到煲仔饭、海南鸡饭的米食版图。", tag:"米饭",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL2pqlP0cUvL7fa-gxpqRNpN6wSxGGAAC0ikAAljgqVT6klXa6M6ylD0E.jpg"},
+  {title:"中国饼馍省钱地图", desc:"面粉的顶饱方式被各地玩明白了：新疆馕、陕西肉夹馍、河北驴肉火烧、上海葱油饼等饼馍版图。", tag:"面食",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL2tqlP07ZZLx9I7ywVhxuDbdQKmNWwAC0ykAAljgqVS4sZXMeyGdfz0E.jpg"},
+  {title:"中国包馅主食地图", desc:"一张面皮包出全国不同吃法：饺子、云吞、馄饨、抄手、包子等包馅主食版图。", tag:"面食",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL21qlP1hkSFlON_XSLZsopsZzmwVsAAC1SkAAljgqVQ9QyhVH1dPej0E.jpg"},
+  {title:"中国米粉江湖地图", desc:"一碗粉吃遍南方的平价快乐：螺蛳粉、湖南米粉、过桥米线、河粉、粿条等米粉版图。", tag:"米粉",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL25qlP2OLQGzLrcqYvZJYPUQFK7UgAAC1ykAAljgqVTal8_XNbTQaz0E.jpg"},
+  {title:"中国早餐省钱地图", desc:"各地打工人的平价续命套餐：煎饼果子、豆浆油条、肉夹馍、胡辣汤、热干面、肠粉等早餐版图。", tag:"早餐",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL3BqlP3AmsykKLI4hDvS4sbzypFRAgAC2SkAAljgqVQ6LXr9-WrCdD0E.jpg"},
+  {title:"中国面食省钱地图", desc:"各地都有自己的平价顶饱王者：兰州牛肉面、油泼面、热干面、重庆小面、炸酱面等面食版图。", tag:"面条",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL3JqlP3tR6N_B9O0ONrGFpeoyVBpZQAC3CkAAljgqVQwUzySIkkgBj0E.jpg"},
+  {title:"12种榴莲图鉴收好", desc:"猫山王浓郁、金枕软糯、干尧微苦、红虾橙红鲜甜……12个常见榴莲品种口感对比。", tag:"榴莲",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL3NqlP4lp4r4d1q38tbE66Pi8IkWiQAC3ikAAljgqVSJULOaPKThjj0E.jpg"},
+  {title:"12种龙眼图鉴收好", desc:"石硖脆爽、储良味甜、桂圆干爽、福眼圆润……12个龙眼品种口感与外观对比。", tag:"龙眼",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL3RqlP5FuNa5sL97mf4Z7ridTHw_dwAC4CkAAljgqVQwF0Ysqz7O2D0E.jpg"},
+  {title:"12种西瓜图鉴收好", desc:"8424皮薄多汁、麒麟个大、黑美人无籽、特小凤玲珑……12个西瓜品种口感与外观对比。", tag:"西瓜",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL3ZqlP5k2VNGEYoM5fmDgwZ0siAxEwAC5CkAAljgqVRNYvytxcnr6j0E.jpg"},
+  {title:"12种苹果图鉴收好", desc:"红富士脆甜、花牛绵软、黄元帅浓郁、王林清香……12个苹果品种口感与风味对比。", tag:"苹果",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL3hqlP6hVnfwCwkgM8pD9FPbCKozUwAC6ikAAljgqVScVYfOku7AFD0E.jpg"},
+  {title:"12种梨图鉴收好", desc:"雪花梨清甜、秋月梨细腻、库尔勒香梨小巧、砀山酥梨酥脆……12个梨品种口感对比。", tag:"梨",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL3lqlP6-UuZWlCUgap-cGcZZupQ9AgAC6ykAAljgqVSVvARCiZithj0E.jpg"},
+  {title:"12种芒果图鉴收好", desc:"台农芒细腻、金煌芒肉厚、贵妃芒无丝、凯特芒清甜……12个芒果品种口感对比。", tag:"芒果",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL3pqlP72q5aSGwUMrkgMMPNYHwb6mgAC7CkAAljgqVTZL76ojAFjQT0E.jpg"},
+  {title:"16种葡萄图鉴收好", desc:"巨峰甜酸适中、阳光玫瑰脆甜、夏黑无核、晴王玫瑰香……16个葡萄品种口感对比。", tag:"葡萄",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL3tqlP8UFarAmv3cvoNk93Aejd6RMwAC7SkAAljgqVShnm0UaXKdTT0E.jpg"},
+  {title:"16种桃子图鉴收好", desc:"阳山水蜜桃汁多、黄桃软糯、油桃无毛、蟠桃扁圆……16个桃子品种口感与外观对比。", tag:"桃子",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL31qlP8xA5VFV-2XxEs_w1o_hX76tgAC8CkAAljgqVQNT-_MU9bgzT0E.jpg"},
+  {title:"16种荔枝图鉴收好", desc:"妃子笑清香、桂味带桂花香、糯米糍软糯、无核荔枝肉厚……16个荔枝品种口感对比。", tag:"荔枝",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL35qlP9c1tkru11HlhqKmIaAIKegfgAC8SkAAljgqVQWpFG3_i-Z0D0E.jpg"},
+  {title:"豆腐保存状态指南", desc:"6种状态教你判断豆腐还能不能吃：轻微失水可食用，发黏发酸就别省了。", tag:"豆腐",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL4JqlP-CZp4EkzcjqtuAXd_3njP_IQAC9SkAAljgqVQz2-v2tLiRcz0E.jpg"},
+  {title:"玉米老嫩度指南", desc:"6种状态教你挑玉米：很嫩汁水足、适中软糯、过老粒干硬，嫩煮老炖各得其用。", tag:"玉米",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL4VqlP-z11On8f-SVbavBn0I9EfL3wAC-CkAAljgqVSinfa0NjsXbj0E.jpg"},
+  {title:"排骨熟度指南", desc:"6种状态教你判断排骨熟度：刚刚软烂口感最佳，不必炖到骨肉分离，过烂发柴反而不好吃。", tag:"猪肉",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL4ZqlP_Z85JpWKXfbarC7ezdsTjh9QAC-ikAAljgqVQyOMeBqcLdaz0E.jpg"},
+  {title:"炖牛肉熟老程度指南", desc:"6种状态判断炖牛肉熟度：刚刚软烂最省气也最好吃，煮太久反而纤维破碎、失去口感。", tag:"牛肉",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL4lqlQABBKg_MppOFnVvCeeMkssS5vMAAv4pAAJY4KlU9dWM4F5iNUc9BA.jpg"},
+  {title:"鲜虾熟度指南", desc:"6种状态判断虾的熟度：虾熟得很快，刚刚熟透口感最好，久煮会收缩发柴、鲜味下降。", tag:"虾",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL45qlQABOkqCO9CvZUOVrPYV3225HDAAAgcqAAJY4KlUtfRwkGAmcW49BA.jpg"},
+  {title:"牛排熟度指南", desc:"从一分熟到全熟，6种牛排熟度状态对比，越贵的牛排越怕煎老，先看厚度再看时间。", tag:"牛肉",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL49qlQABf9SGIY0Hvpu2kVbdW1Mux5MAAgkqAAJY4KlUYzS-T97lbA49BA.jpg"},
+  {title:"鸡蛋熟度指南", desc:"6种熟度从溏心偏生到过熟，不同吃法适合不同熟度，溏心蛋要注意鸡蛋新鲜和卫生。", tag:"鸡蛋",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL5JqlQABnNMrIKC_FRleo67cjlmD8EsAAgwqAAJY4KlUOh_GYwhI2eQ9BA.jpg"},
+  {title:"白切鸡熟度指南", desc:"6种熟度状态从骨红肉红到骨熟肉深熟，白切鸡可按个人口感选择，但要确保食品安全。", tag:"鸡肉",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL5NqlQABwsfa4U5ggpTgmTsL-cW5qQUAAg0qAAJY4KlULGeJkysS0EE9BA.jpg"},
+  {title:"一扇排骨的省钱地图", desc:"同样叫排骨，不同位置价格和做法差很多：小排适合糖醋，肋排适合红烧，筒骨适合熬汤。", tag:"猪肉",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL5lqlQAB_X4d3-Pbo3sdthkueKlcDuUAAhMqAAJY4KlUJa-oyQFH2VY9BA.jpg"},
+  {title:"一条鱼的省钱地图", desc:"鱼头鱼骨别浪费，一条鱼也能做两顿饭：鱼头炖汤、鱼身红烧、鱼骨熬汤、鱼腩做丸。", tag:"鱼",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL5tqlQEhnJ_oAwRM2fg2baRACI9-fQACFyoAAljgqVSOwvtKIIWYIz0E.jpg"},
+  {title:"一头牛的省钱地图", desc:"煎炒炖煮选对部位，普通牛肉也能很好吃：里脊煎炒、牛腩炖煮、牛尾煲汤、牛腱卤味。", tag:"牛肉",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL51qlQFYFWRCXIClCKN01ceyQk1hVwACGioAAljgqVRDkD9-xuuC7D0E.jpg"},
+  {title:"鲜虾新鲜度判断指南", desc:"别只看颜色，要看气味、弹性、黏液、黑头：壳亮肉紧尽快吃，发黏异味或胀袋直接丢。", tag:"虾",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL6FqlQF88V1NPwpAtC28CzCl_bd6_gACHioAAljgqVS30B-WYn5vfj0E.jpg"},
+  {title:"草莓新鲜度判断指南", desc:"别只看表面，要看颜色、气味、触感、状态：鲜红干爽可放心吃，霉斑扩散或软烂流水就别吃了。", tag:"草莓",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL6ZqlQGmfGtoTLt9zLzNAAEOnjrHFd8AAiMqAAJY4KlUgQe0s9VB-Uc9BA.jpg"},
+  {title:"一张图教你怎么挑鸡蛋", desc:"别再只看价格，学会挑好蛋：蛋壳完整、摇晃无声、沉水测试，再按日常吃/煮蛋/烘焙选新鲜度。", tag:"鸡蛋",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL6hqlQIPntSxyBw8q2C7Px1fWsV5UQACJSoAAljgqVSkShtF8fyuFz0E.jpg"},
+  {title:"蘑菇新鲜度判断指南", desc:"别只看表面，要看颜色、气味、黏性和形状：白净饱满可放心吃，发黏出斑不建议，异味出水直接丢。", tag:"蘑菇",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL6lqlQI3C_D4f9a2dqztke3cU9RncwACJioAAljgqVTj85hwpn_F_z0E.jpg"},
+  {title:"菠菜新鲜度判断指南", desc:"别只看颜色，要看状态、气味、质地、根部：叶片挺括鲜绿可放心吃，发黄出水不建议久放，黏液异味直接丢。", tag:"菠菜",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL6pqlQJVXnp1WTykrVBIyDXrqbbWJwACJyoAAljgqVScGAefXLioXj0E.jpg"},
+  {title:"土豆新鲜度与安全指南", desc:"别只看个头，要看发芽、颜色、质地：新鲜完整尽快吃，发绿含龙葵素不要吃，腐烂出水直接丢。", tag:"土豆",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL65qlQKWKIjUhXcx5HwjhAh8Uot3iAACLCoAAljgqVQCopkuGotvCj0E.jpg"},
+  {title:"青菜新鲜度判断指南", desc:"别只看叶子，要看颜色、根部、手感：挺拔翠绿最好，发黄变软尽快吃，发黏腐烂有异味别吃了。", tag:"青菜",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL7JqlQKyXlrBikg2bxOnfjncbVmfRQACMCoAAljgqVTsw-L3imh_Hj0E.jpg"},
+  {title:"香蕉新鲜度判断指南", desc:"别只看表皮，要看软硬、斑点、气味：微黄到带斑点最好吃，发黑出汁容易变质。", tag:"香蕉",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL7RqlQLNgT19dGup0qOEkQqckKgRLQACMioAAljgqVSzZiQWuqIr9T0E.jpg"},
+  {title:"米饭新鲜度判断指南", desc:"别只看颜色，要看气味、状态、弹性、黏性：松散有光泽可食用，黏软有酸味或发霉长毛不要吃。", tag:"米饭",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL71qlQNBWpEniYlKWqKpuHYN-o0_dAACOyoAAljgqVRLCoXvAAHdBeg9BA.jpg"},
+  {title:"牛奶新鲜度判断指南", desc:"别只看日期，要看气味、状态、颜色、包装：乳白均匀无异味可饮用，微酸絮状不建议，分层凝固有异味不要喝。", tag:"牛奶",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL8FqlQNy8oCkZ1sJ2Yn-hdP0JoXStwACPyoAAljgqVTi4SgqZtD1eD0E.jpg"},
+  {title:"一张图教你怎么买猪肉", desc:"12大部位挑选要点与适合做法：里脊炒肉丝、五花肉红烧、排骨炖汤、猪蹄卤炖，别再买错部位。", tag:"猪肉",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL8JqlQOOUu5nM17kCY90GPvlvoSEywACQCoAAljgqVQ3cRpAnEfqrz0E.jpg"},
+  {title:"一张图教你看懂鱼新不新鲜", desc:"鱼贩最怕你先看这4个地方：鱼眼清澈凸起、鱼鳃鲜红、鱼肉回弹、鱼肚紧实才是新鲜。", tag:"鱼",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL8NqlQOu7h_iupn12hNsCSIpA29sgAACQioAAljgqVSle3wxxQM_dj0E.jpg"},
+  {title:"一只鸡的省钱地图", desc:"从菜市场到餐桌，买对部位少花冤枉钱：鸡胸煎炒、鸡腿炖煮、鸡翅红烧、鸡架熬汤。", tag:"鸡肉",
+   img:"https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEaL8RqlQPOs0pNMYIAAW5FTIYAAZU3VEMKAAJDKgACWOCpVPUTa8jr2u-3PQQ.jpg"}
+];
+
+
+const masonry  = document.getElementById('masonry');
+const search   = document.getElementById('search');
+const modal    = document.getElementById('modal');
+const modalImg = document.getElementById('modalImg');
+const modalCap = document.getElementById('modalCap');
+
+/* 渲染卡片：keyword 为空显示全部，否则按 标题/标签 前端筛选 */
+function render(keyword = ''){
+  const kw = keyword.trim().toLowerCase();
+  /* 先携带原始下标再过滤，确保搜索后点击卡片仍能取到正确的 DATA 记录 */
+  const list = DATA
+    .map((d, idx) => ({ d, idx }))
+    .filter(x => !kw || x.d.title.toLowerCase().includes(kw) || x.d.tag.toLowerCase().includes(kw));
+  masonry.innerHTML = list.length
+    ? list.map(({d, idx}) => `
+        <article class="card" data-idx="${idx}">
+          <img src="${d.img}" alt="${d.title}" loading="lazy">
+          <div class="body">
+            <div class="title">${d.title}</div>
+            <div class="desc">${d.desc}</div>
+            <span class="tag">#${d.tag}</span>
+          </div>
+        </article>`).join('')
+    : `<p class="empty">${kw ? '没有找到相关卡片 🙃' : '还没有卡片，在 DATA 里添加内容吧 📷'}</p>`;
+}
+
+/* 搜索：输入即时筛选 */
+search.addEventListener('input', e => render(e.target.value));
+
+/* 点击卡片 → 打开大图弹窗（事件委托，性能更好） */
+masonry.addEventListener('click', e => {
+  const card = e.target.closest('.card');
+  if(!card) return;
+  const d = DATA[card.dataset.idx];
+  modalImg.src = d.img;
+  modalCap.textContent = d.title;
+  modal.hidden = false;
+});
+
+/* 关闭弹窗：× 按钮 / 点击黑色背景 / 按 Esc */
+document.getElementById('modalClose').addEventListener('click', () => modal.hidden = true);
+modal.addEventListener('click', e => { if(e.target === modal) modal.hidden = true; });
+document.addEventListener('keydown', e => { if(e.key === 'Escape') modal.hidden = true; });
+
+/* =========================================================
+   随机排序开关
+   true  = 每次打开/刷新页面，卡片顺序都会重新打乱
+   false = 按 DATA 里的原始顺序展示
+   说明：打乱只在页面加载时执行一次，
+        之后搜索筛选不会重新打乱，避免结果乱跳。
+   ========================================================= */
+const SHUFFLE = true;
+
+if(SHUFFLE){
+  /* Fisher-Yates 洗牌算法：原地随机打乱 DATA 顺序 */
+  for(let i = DATA.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [DATA[i], DATA[j]] = [DATA[j], DATA[i]];
+  }
+}
+
+/* 首次渲染 */
+render();
+</script>
+</body>
+</html>
