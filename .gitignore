@@ -1,0 +1,9 @@
+# 本地备份原图（压缩前的 jpg），不纳入仓库
+images-originals/
+
+# WorkBuddy 项目本地数据
+.workbuddy/
+
+# 系统/编辑器文件
+.DS_Store
+Thumbs.db

@@ -7,7 +7,7 @@
 - 点击卡片弹出大图预览，支持 × / 点击背景 / Esc 关闭
 - 顶部搜索框，按标题或标签实时前端筛选（示例：牛奶、土豆、青菜、香蕉）
 - 响应式：电脑 4 列 / 平板 3 列 / 手机 2 列
-- 图片放在 `images/` 目录，HTML 中使用相对地址引用，无 base64 内嵌，部署后完全自包含
+- 图片放在 `images/` 目录，HTML 中使用相对地址（`images/xxx.webp`）引用，无 base64 内嵌，部署后完全自包含
 
 ---
 
@@ -31,7 +31,7 @@
    ```
 3. 仓库 → **Settings → Pages → Source** 选择 `main` 分支、`/ (root)` 目录，保存。
 4. 等待约 1 分钟，访问 `https://<你的用户名>.github.io/<仓库名>/` 即可公开访问。
-   图片的 `images/xxx.jpg` 相对路径会自动解析为 `https://<你的用户名>.github.io/<仓库名>/images/xxx.jpg`。
+   图片的 `images/xxx.webp` 相对路径会自动解析为 `https://<你的用户名>.github.io/<仓库名>/images/xxx.webp`。
 
 ### 方式 B：Vercel
 1. 打开 [vercel.com](https://vercel.com)，用 GitHub 登录。
@@ -47,30 +47,34 @@
 ```
 瞬影簿/
 ├── index.html
-├── images/              ← 图片统一放这里
-│   ├── hotpot-life-cycle.jpg
-│   ├── egg-life-cycle.jpg
-│   └── ...（其他 60+ 张）
+├── images/              ← 图片统一放这里（WebP 格式）
+│   ├── hotpot-life-cycle.webp
+│   ├── egg-life-cycle.webp
+│   └── ...（其他 100+ 张）
+├── .gitignore           ← 已忽略 images-originals/ 与 .workbuddy/
 └── README.md
 ```
 
+> 压缩前的原始 jpg 已备份在 `images-originals/`（本地，不进仓库），如需重压可随时取用。
+
 ### 新增一张卡片（4 步）
-1. 把图片文件保存到 `images/`/`，文件名只用英文/数字/连字符，例如 `hotpot-life-cycle.jpg`。
+1. 把图片文件保存到 `images/`/`，文件名只用英文/数字/连字符，例如 `hotpot-life-cycle.webp`。
 2. 打开 `index.html`，找到 `const DATA = [ ... ]` 数组。
 3. 在数组里追加一条记录：
    ```js
-   {title:"标题文字", desc:"补充说明", tag:"搜索标签", img:"images/你的文件名.jpg"}
+   {title:"标题文字", desc:"补充说明", tag:"搜索标签", img:"images/你的文件名.webp"}
    ```
 4. 保存后刷新浏览器即可看到新卡片。
 
 ### 文件名建议用语义化英文短名
-- ✅ `hotpot-life-cycle.jpg` `apple-12-types.jpg` `chicken-savings-map.jpg`
+- ✅ `hotpot-life-cycle.webp` `apple-12-types.webp` `chicken-savings-map.webp`
 - ❌ `微信图片_20260903.jpg`（不兼容部分服务器）`IMG_1234.jpg`（不便识别）
 
-### 注意事项
+### 图片优化（已应用）
+- 全部图片已压缩为 **WebP（宽 ≤800px、质量 80）**，104 张共约 **11MB**（原 58MB），加载速度快约 5 倍。
+- 前端加载策略：首屏前 10 张 `loading="eager"` 立即加载，其余 `loading="lazy"` 懒加载；图片加载完成淡入，配合灰色占位避免布局跳动。
 - **不要**把图片转 base64 写进 HTML，会令单文件体积暴涨。
-- 图片建议提前压缩（宽度 400–800px、WebP 格式），保证移动端加载流畅。
-- `images/` 当前 61 张图共约 34MB，GitHub 单仓库建议 <1GB，留足余量。
+- 新增图片也建议走一遍压缩（见 `.workbuddy/scripts/compress_webp.py`）。
 
 ---
 
